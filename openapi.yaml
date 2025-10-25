@@ -1,0 +1,201 @@
+openapi: 3.0.3
+info:
+  title: Semantic Judge API
+  version: 1.1.1
+  description: |
+    REST API that compares sentence pairs to determine semantic equivalence (entailment).
+    Uses a Sentence-BERT model to compute cosine similarity and classify as **ENTAIL** or **NO_ENTAIL**.
+servers:
+  - url: https://api.example.com
+    description: Production server
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /judge:
+    post:
+      summary: Judge a single sentence pair
+      description: |
+        Takes two sentences and determines whether they convey the same meaning (semantic entailment).
+        The service uses an internal, server-side threshold and model — clients do not supply a threshold.
+      operationId: judgeSingle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JudgeRequest'
+            example:
+              sentence1: "He bought a car."
+              sentence2: "He purchased a vehicle."
+      responses:
+        '200':
+          description: Successful entailment judgment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JudgeResponse'
+              example:
+                sentence1: "He bought a car."
+                sentence2: "He purchased a vehicle."
+                similarity: 0.8421
+                label: "ENTAIL"
+                cached: false
+        '400':
+          description: Invalid request payload or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Both sentence1 and sentence2 are required."
+        '429':
+          description: Too Many Requests (rate limit exceeded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Rate limit exceeded. Try again later."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Unexpected error during model inference."
+
+  /judge/bulk:
+    post:
+      summary: Judge multiple sentence pairs in one request
+      description: |
+        Accepts an array of up to 100 sentence pairs for bulk semantic comparison.
+        Each item follows the same format as the `/judge` endpoint. The server applies its internal
+        judgment logic and returns an array of results.
+      operationId: judgeBulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkJudgeRequest'
+            example:
+              pairs:
+                - sentence1: "He bought a car."
+                  sentence2: "He purchased a vehicle."
+                - sentence1: "The cat sat on the mat."
+                  sentence2: "A cat was sitting on the rug."
+      responses:
+        '200':
+          description: Successful bulk judgment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkJudgeResponse'
+              example:
+                results:
+                  - sentence1: "He bought a car."
+                    sentence2: "He purchased a vehicle."
+                    similarity: 0.8421
+                    label: "ENTAIL"
+                    cached: false
+                  - sentence1: "The cat sat on the mat."
+                    sentence2: "A cat was sitting on the rug."
+                    similarity: 0.6784
+                    label: "NO_ENTAIL"
+                    cached: false
+        '400':
+          description: Invalid request or exceeded 100 pairs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Too many pairs. Max 100 allowed."
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Rate limit exceeded. Try again later."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Unexpected error during bulk processing."
+
+components:
+  schemas:
+    JudgeRequest:
+      type: object
+      required: [sentence1, sentence2]
+      properties:
+        sentence1:
+          type: string
+          example: "He bought a car."
+        sentence2:
+          type: string
+          example: "He purchased a vehicle."
+    JudgeResponse:
+      type: object
+      required: [sentence1, sentence2, similarity, label, cached]
+      properties:
+        sentence1:
+          type: string
+        sentence2:
+          type: string
+        similarity:
+          type: number
+          format: float
+          example: 0.8421
+        label:
+          type: string
+          enum: [ENTAIL, NO_ENTAIL]
+          example: "ENTAIL"
+        cached:
+          type: boolean
+          example: false
+    BulkJudgeRequest:
+      type: object
+      required: [pairs]
+      properties:
+        pairs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/JudgeRequest'
+    BulkJudgeResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/JudgeResponse'
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          example: "An error occurred."
+
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+security:
+  - basicAuth: []
+  - cookieAuth: []
